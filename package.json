@@ -1,0 +1,18 @@
+{
+  "name": "tweets2character",
+  "version": "1.0.0",
+  "description": "Convert your twitter archive into a .character file which you can use with Ruby agent or other LLM agents.",
+  "main": "tweets2character.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "node-stream-zip": "^1.15.0",
+    "nstall": "^0.2.0"
+  }
+}
