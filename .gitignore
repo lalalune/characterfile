@@ -5,3 +5,6 @@ logs/
 node_modules/
 *.zip
 twitter-*/
+model.gguf
+brief.character.json
+full.character.json
