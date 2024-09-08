@@ -11,6 +11,7 @@ import readline from 'readline';
 import util from 'util';
 import LlamaService from './LlamaService.js';
 import StreamZip from 'node-stream-zip';
+import inquirer from "inquirer";
 
 dotenv.config();
 
@@ -60,24 +61,24 @@ const parseJsonFromMarkdown = (text) => {
 };
 
 const promptUser = async (question, defaultValue = '') => {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim() || defaultValue);
-    });
-  });
+  // Add a newline before the prompt
+  console.log();
+  
+  const { answer } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'answer',
+      message: question,
+      default: defaultValue,
+    },
+  ]);
+  return answer;
 };
 
 const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'fast', model) => {
   if (model === 'openai') {
     log('Running OpenAI chat completion...');
     const modelName = qualityLevel === 'fast' ? 'gpt-4o-mini' : 'gpt-4o';
-    console.log('modelName', modelName);
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -90,18 +91,20 @@ const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'f
       }),
     });
 
-    console.log('response', response);
+    // check for 429
+    if (response.status === 429) {
+      log('Rate limit exceeded, waiting for 30 seconds');
+      await new Promise(resolve => setTimeout(resolve, 30000));
+      return runChatCompletion(messages, useGrammar, qualityLevel, model);
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    console.log('response', response);
-
     const data = await response.json();
     const content = data.choices[0].message.content.trim();
     const parsed = parseJsonFromMarkdown(content) || JSON.parse(content);
-    console.log('parsed', parsed);
     return parsed;
   } else if (model === 'claude') {
     log('Running Claude chat completion...');
@@ -125,7 +128,6 @@ const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'f
 
     const content = response.content[0].text;
     const parsed = parseJsonFromMarkdown(content) || JSON.parse(content);
-    console.log('parsed', parsed);
     return parsed;
   } else {
     log('Running open-source model chat completion...');
@@ -134,7 +136,6 @@ const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'f
       ? await llamaService.queueMessageCompletion(messages[0].content, 0.7, ['<|endoftext|>'], 0.5, 0.5, 2048)
       : await llamaService.queueTextCompletion(messages[0].content, 0.7, ['<|endoftext|>'], 0.5, 0.5, 2048);
     const parsed = parseJsonFromMarkdown(response) || JSON.parse(response);
-    console.log('parsed', parsed);
     return parsed;
   }
 };
@@ -154,7 +155,6 @@ const retryWithExponentialBackoff = async (func, retries = MAX_RETRIES) => {
 };
 
 const validateJson = (json) => {
-  console.log('validateJson', json);
   const requiredKeys = ['bio', 'lore', 'adjectives', 'topics', 'style', 'messageExamples', 'postExamples'];
   const styleKeys = ['all', 'chat', 'post'];
 
@@ -443,7 +443,6 @@ Make sure to ignore any information from other users and focus exclusively on an
   do {
     console.log('Running chat completion...');
     result = await retryWithExponentialBackoff(() => runChatCompletion([{ role: 'user', content: prompt }], true, qualityLevel, model));
-    console.log('result', result);
   } while (!validateJson(result))
 
   writeCacheFile(cacheDir, promptResponseFileName, result);
@@ -473,7 +472,7 @@ const extractInfoFromChunks = async (accountData, chunks, archivePath, qualityLe
     }
   }
 
-  const concurrencyLimit = 4; // Adjust this value based on your needs and API rate limits
+  const concurrencyLimit = 3; // Adjust this value based on your needs and API rate limits
   const results = await limitConcurrency(tasks, concurrencyLimit);
 
   return [...cachedResults, ...results.filter((result) => result !== null)];
@@ -572,7 +571,6 @@ const chunkText = async (tweets, dms, accountData, archivePath) => {
     for (let i = 0; i < dms.length; i += 250) {
       const dmChunk = dms.slice(i, i + 250);
       const dmText = dmChunk.map((dm) => {
-        console.log("dm", dm)
         dm.text;
     }).join('\n');
       chunks.push(dmText);
@@ -753,69 +751,6 @@ program
   .option('--claude <api_key>', 'Claude API key')
   .parse(process.argv);
 
-let archivePath = program.args[0];
-
-if (!archivePath) {
-  archivePath = await promptUser('Please provide the path to your Twitter archive zip file: ');
-}
-
-const generateCharacterJson = async (archivePath, qualityLevel, model) => {
-  log(`Starting character generation from archive: ${archivePath}`);
-  const zip = new StreamZip.async({ file: archivePath });
-
-  console.log("zip", zip)
-
-  try {
-    log('Reading account data...');
-    const accountData = JSON.parse((await readFileFromZip(zip, 'data/account.js')).replace('window.YTD.account.part0 = ', ''));
-    log('Account data:', accountData);
-
-    log('Reading tweets...');
-    const tweets = JSON.parse((await readFileFromZip(zip, 'data/tweets.js')).replace('window.YTD.tweets.part0 = ', ''))
-      .map((item) => item.tweet)
-      .filter((tweet) => !tweet.retweeted);
-    log(`Parsed ${tweets.length} tweets`);
-
-    log('Reading direct messages...');
-    const dms = JSON.parse((await readFileFromZip(zip, 'data/direct-messages.js')).replace('window.YTD.direct_messages.part0 = ', ''))
-      .flatMap((item) => item.dmConversation.messages)
-      .map((message) => message.messageCreate);
-    log(`Parsed ${dms.length} direct messages`);
-
-    const chunks = await chunkText(tweets, dms, accountData, archivePath);
-
-    const results = await extractInfoFromChunks(accountData, chunks, archivePath, qualityLevel, model);
-
-    const combined = combineAndDeduplicate(results);
-
-    log('Writing full.character.json...');
-    fs.writeFileSync('full.character.json', JSON.stringify(combined, null, 2));
-    log('full.character.json generated successfully');
-
-
-
-    const character = {
-      name: accountData[0].account.accountDisplayName,
-      ...combined,
-    };
-
-    log('Consolidating character information...');
-    const fullCharacter = await consolidateCharacter(character, character.name);
-    log('Consolidated full character information:', fullCharacter);
-
-    log('Writing brief.character.json...');
-    fs.writeFileSync('brief.character.json', JSON.stringify(fullCharacter, null, 2));
-    log('brief.character.json generated successfully');
-
-
-  } catch (error) {
-    logError('Error generating character.json:', error);
-  } finally {
-    await zip.close();
-  }
-};
-
-
 const limitConcurrency = async (tasks, concurrencyLimit) => {
   const results = [];
   const runningTasks = new Set();
@@ -903,8 +838,7 @@ const resumeOrStartNewSession = async (projectCache, archivePath) => {
   if (!projectCache.unfinishedSession) {
     projectCache.model = await promptUser('Select model (openai/claude/open-source): ');
     projectCache.qualityLevel = await promptUser('Select quality (fast/quality): ');
-    projectCache.basicUserInfo = await promptUser('Enter additional user info: ');
-    
+    projectCache.basicUserInfo = await promptUser('Enter additional user info that might help the summarizer (real name, nicknames and handles, age, past employment vs current, etc): ');
     projectCache.unfinishedSession = {
       currentChunk: 0,
       totalChunks: 0,
@@ -931,14 +865,20 @@ const updateProgress = (progressBar, projectCache, archivePath) => {
 
 const main = async () => {
   try {
+    console.log("Starting main function");
     let archivePath = program.args[0];
+    console.log("Archive path from args:", archivePath);
+    
     if (!archivePath) {
-      archivePath = await promptUser('Please provide the path to your Twitter archive zip file: ');
+      archivePath = await promptUser('Please provide the path to your Twitter archive zip file:');
+      console.log("Received archive path:", archivePath);
     }
 
     let projectCache = loadProjectCache(archivePath) || {};
     
+    console.log("\nAbout to call resumeOrStartNewSession");
     projectCache = await resumeOrStartNewSession(projectCache, archivePath);
+    console.log("Finished resumeOrStartNewSession\n");
     
     if (projectCache.model !== 'open-source') {
       const apiKey = await getApiKey(projectCache.model);
@@ -957,52 +897,57 @@ const main = async () => {
       const zip = new StreamZip.async({ file: archivePath });
 
       try {
-        log('Reading account data...');
+        console.log('Reading account data...');
         const accountData = JSON.parse((await readFileFromZip(zip, 'data/account.js')).replace('window.YTD.account.part0 = ', ''));
-        log('Account data:', accountData);
+        console.log('Account data:', accountData);
 
-        log('Reading tweets...');
+        console.log('Reading tweets...');
         const tweets = JSON.parse((await readFileFromZip(zip, 'data/tweets.js')).replace('window.YTD.tweets.part0 = ', ''))
           .map((item) => item.tweet)
           .filter((tweet) => !tweet.retweeted);
-        log(`Parsed ${tweets.length} tweets`);
+        console.log(`Parsed ${tweets.length} tweets`);
 
-        log('Reading direct messages...');
+        console.log('Reading direct messages...');
         const dms = JSON.parse((await readFileFromZip(zip, 'data/direct-messages.js')).replace('window.YTD.direct_messages.part0 = ', ''))
           .flatMap((item) => item.dmConversation.messages)
           .map((message) => message.messageCreate);
-        log(`Parsed ${dms.length} direct messages`);
+        console.log(`Parsed ${dms.length} direct messages`);
 
         const chunks = await chunkText(tweets, dms, accountData, archivePath);
         projectCache.unfinishedSession.totalChunks = chunks.length;
         progressBar.setTotal(chunks.length);
 
-        const results = [];
-        for (let i = projectCache.unfinishedSession.currentChunk; i < chunks.length; i++) {
-          const result = await extractInfo(accountData, chunks[i], i, archivePath, projectCache.qualityLevel, projectCache.model);
-          results.push(result);
-          projectCache.unfinishedSession.currentChunk = i + 1;
-          updateProgress(progressBar, projectCache, archivePath);
-        }
+        const tasks = chunks.map((chunk, index) => async () => {
+          if (index < projectCache.unfinishedSession.currentChunk) {
+            return null; // Skip already processed chunks
+          }
+          const result = await extractInfo(accountData, chunk, index, archivePath, projectCache.qualityLevel, projectCache.model);
+          projectCache.unfinishedSession.currentChunk = index + 1;
+          progressBar.update(projectCache.unfinishedSession.currentChunk);
+          saveProjectCache(archivePath, projectCache);
+          return result;
+        });
 
-        const combined = combineAndDeduplicate(results);
+        const results = await limitConcurrency(tasks, 3); // Process 3 chunks concurrently
 
-        log('Writing full.character.json...');
+        const combined = combineAndDeduplicate(results.filter(result => result !== null));
+
+        console.log('Writing full.character.json...');
         fs.writeFileSync('full.character.json', JSON.stringify(combined, null, 2));
-        log('full.character.json generated successfully');
+        console.log('full.character.json generated successfully');
 
         const character = {
           name: accountData[0].account.accountDisplayName,
           ...combined,
         };
 
-        log('Consolidating character information...');
+        console.log('Consolidating character information...');
         const fullCharacter = await consolidateCharacter(character, character.name, projectCache.model);
-        log('Consolidated full character information:', fullCharacter);
+        console.log('Consolidated full character information:', fullCharacter);
 
-        log('Writing brief.character.json...');
+        console.log('Writing brief.character.json...');
         fs.writeFileSync('brief.character.json', JSON.stringify(fullCharacter, null, 2));
-        log('brief.character.json generated successfully');
+        console.log('brief.character.json generated successfully');
 
         return fullCharacter;
       } finally {
@@ -1017,10 +962,10 @@ const main = async () => {
 
     clearGenerationCache(archivePath);
 
-    log('Script execution completed successfully.');
-    log('Generated character:', generatedCharacter);
+    console.log('Script execution completed successfully.');
+    console.log('Generated character:', generatedCharacter);
   } catch (error) {
-    logError('Error during script execution:', error);
+    console.error('Error during script execution:', error);
     process.exit(1);
   }
 };

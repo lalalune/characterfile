@@ -1,6 +1,6 @@
 # tweets2character
 
-Convert your twitter archive into a .character file which you can use with Ruby agent or other LLM agents.
+Convert your twitter archive into a .character file which you can use with [Eliza](https://github.com/lalalune/eliza) or other LLM agents.
 
 First, download your Twitter archive here: https://help.x.com/en/managing-your-account/how-to-download-your-x-archive
 
