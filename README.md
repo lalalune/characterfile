@@ -4,6 +4,13 @@ Convert your twitter archive into a .character file which you can use with [Eliz
 
 First, download your Twitter archive here: https://help.x.com/en/managing-your-account/how-to-download-your-x-archive
 
+You can run tweets2character directly from your command line with no downloads:
+```
+npx tweets2character
+```
+
+Note: you will need node.js installed. The easiest way is with [nvm](https://github.com/nvm-sh/nvm).
+
 Then clone this repo and run these commands:
 ```
 npm install
