@@ -5,13 +5,12 @@ import cliProgress from 'cli-progress';
 import { program } from 'commander';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import inquirer from "inquirer";
+import StreamZip from 'node-stream-zip';
 import os from 'os';
 import path from 'path';
-import readline from 'readline';
 import util from 'util';
 import LlamaService from './LlamaService.js';
-import StreamZip from 'node-stream-zip';
-import inquirer from "inquirer";
 
 dotenv.config();
 
@@ -448,34 +447,6 @@ Make sure to ignore any information from other users and focus exclusively on an
   writeCacheFile(cacheDir, promptResponseFileName, result);
 
   return result;
-};
-
-const extractInfoFromChunks = async (accountData, chunks, archivePath, qualityLevel, model) => {
-  log('Extracting information from chunks...');
-
-  const cacheDir = path.join(tmpDir, 'cache', path.basename(archivePath, '.zip'));
-  const cachedResults = [];
-  const tasks = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const promptResponseFileName = `prompt_response_${i}_${model}.json`;
-    const cachedPromptResponse = readCacheFile(cacheDir, promptResponseFileName);
-
-    if (cachedPromptResponse) {
-      log(`Loading cached result for chunk ${i}...`);
-      cachedResults.push(cachedPromptResponse);
-    } else {
-      tasks.push(async () => {
-        const result = await extractInfo(accountData, chunks[i], i, archivePath, qualityLevel, model);
-        return result;
-      });
-    }
-  }
-
-  const concurrencyLimit = 3; // Adjust this value based on your needs and API rate limits
-  const results = await limitConcurrency(tasks, concurrencyLimit);
-
-  return [...cachedResults, ...results.filter((result) => result !== null)];
 };
 
 const buildConversationThread = async (tweet, tweets, accountData) => {
