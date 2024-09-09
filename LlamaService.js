@@ -7,8 +7,9 @@ import {
 import path from "path";
 import si from "systeminformation";
 import { fileURLToPath } from "url";
+import os from "os";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const tmpDir = path.join(os.homedir(), 'tmp', '.eliza');
 
 const jsonSchemaGrammar = {
   type: "object",
@@ -44,7 +45,7 @@ class LlamaService {
     const modelName = "model.gguf";
     console.log("modelName", modelName);
     // Store the model in the global .eliza directory
-    this.modelPath = path.join(globalElizaDir, modelName);
+    this.modelPath = path.join(tmpDir, modelName);
     this.initializeModel();
   }
 
@@ -105,8 +106,8 @@ class LlamaService {
   async checkModel() {
     console.log("Checking model");
     // Ensure the global .eliza directory exists
-    if (!fs.existsSync(globalElizaDir)) {
-      fs.mkdirSync(globalElizaDir, { recursive: true });
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true });
     }
 
     if (!fs.existsSync(this.modelPath)) {
