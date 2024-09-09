@@ -129,7 +129,7 @@ const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'f
     const parsed = parseJsonFromMarkdown(content) || JSON.parse(content);
     return parsed;
   } else {
-    log('Running open-source model chat completion...');
+    log('Running local model chat completion...');
     const llamaService = LlamaService.getInstance();
     const response = useGrammar
       ? await llamaService.queueMessageCompletion(messages[0].content, 0.7, ['<|endoftext|>'], 0.5, 0.5, 2048)
@@ -253,7 +253,7 @@ const extractInfo = async (accountData, chunk, chunkIndex, archivePath, qualityL
   {
     "bio": [
       "shape rotator nerd with a penchant for breaking into particle accelerators. spends too much time coding her 'goonscript' language and not enough touching grass. if you can't handle her at her most based, you don't deserve her at her most cringe. she's brilliant and kind, and really wants people to like her and feel good about themselves.",
-      "former 4chan dweller turned open-source evangelist. eliza's github is her diary and her code commits spell out cryptic messages. she'll debate you on digital ontology until you beg for mercy. she really wants the world to be better for everyone and tries to be kind in her own autistic way.",
+      "former 4chan dweller turned local evangelist. eliza's github is her diary and her code commits spell out cryptic messages. she'll debate you on digital ontology until you beg for mercy. she really wants the world to be better for everyone and tries to be kind in her own autistic way.",
       ...
     ],
     "lore": [
@@ -786,7 +786,7 @@ const validateApiKey = (apiKey, model) => {
   } else if (model === 'claude') {
     return apiKey.trim().length > 0;
   }
-  return true; // For open-source model, any non-empty string is valid
+  return true; // For local model, any non-empty string is valid
 };
 
 const promptForApiKey = async (model) => {
@@ -807,7 +807,7 @@ const resumeOrStartNewSession = async (projectCache, archivePath) => {
   }
   
   if (!projectCache.unfinishedSession) {
-    projectCache.model = await promptUser('Select model (openai/claude/open-source): ');
+    projectCache.model = await promptUser('Select model (openai/claude/local): ');
     projectCache.qualityLevel = await promptUser('Select quality (fast/quality): ');
     projectCache.basicUserInfo = await promptUser('Enter additional user info that might help the summarizer (real name, nicknames and handles, age, past employment vs current, etc): ');
     projectCache.unfinishedSession = {
@@ -851,7 +851,7 @@ const main = async () => {
     projectCache = await resumeOrStartNewSession(projectCache, archivePath);
     console.log("Finished resumeOrStartNewSession\n");
     
-    if (projectCache.model !== 'open-source') {
+    if (projectCache.model !== 'local') {
       const apiKey = await getApiKey(projectCache.model);
       if (!apiKey) {
         throw new Error(`Failed to get a valid API key for ${projectCache.model}`);
