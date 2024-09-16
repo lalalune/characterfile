@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import Anthropic from "@anthropic-ai/sdk";
 import cliProgress from 'cli-progress';
 import { program } from 'commander';
 import dotenv from 'dotenv';
@@ -10,7 +9,7 @@ import StreamZip from 'node-stream-zip';
 import os from 'os';
 import path from 'path';
 import util from 'util';
-import LlamaService from './LlamaService.js';
+import { prompt } from './prompt.js';
 
 dotenv.config();
 
@@ -29,21 +28,10 @@ if (!fs.existsSync(envPath)) {
 
 let basicUserInfo = "";
 
-const log = (message, obj = null) => {
-  console.log(`[${new Date().toISOString()}] ${message}`);
-  if (obj) {
-    console.log(util.inspect(obj, { depth: null, colors: true }));
-  }
-};
-
 const logError = (message, error) => {
   console.error(`[${new Date().toISOString()}] ERROR: ${message}`);
   if (error) {
     console.error(util.inspect(error, { depth: null, colors: true }));
-    // if (error.stack) {
-    //   console.error('Stack trace:');
-    //   console.error(error.stack);
-    // }
   }
 };
 
@@ -74,10 +62,9 @@ const promptUser = async (question, defaultValue = '') => {
   return answer;
 };
 
-const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'fast', model) => {
+const runChatCompletion = async (messages, useGrammar = false, model) => {
   if (model === 'openai') {
-    log('Running OpenAI chat completion...');
-    const modelName = qualityLevel === 'fast' ? 'gpt-4o-mini' : 'gpt-4o';
+    const modelName = 'gpt-4o';
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -92,9 +79,8 @@ const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'f
 
     // check for 429
     if (response.status === 429) {
-      log('Rate limit exceeded, waiting for 30 seconds');
       await new Promise(resolve => setTimeout(resolve, 30000));
-      return runChatCompletion(messages, useGrammar, qualityLevel, model);
+      return runChatCompletion(messages, useGrammar, model);
     }
 
     if (!response.ok) {
@@ -105,36 +91,38 @@ const runChatCompletion = async (messages, useGrammar = false, qualityLevel = 'f
     const content = data.choices[0].message.content.trim();
     const parsed = parseJsonFromMarkdown(content) || JSON.parse(content);
     return parsed;
-  } else if (model === 'claude') {
-    log('Running Claude chat completion...');
-    const modelName = qualityLevel === 'fast' ? 'haiku' : 'claude-3-5-sonnet-20240620';
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
+  }
+  else if (model === 'claude') {
+    const modelName = 'claude-3-5-sonnet-20240620';
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': process.env.CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: modelName,
+        max_tokens: 8192,
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: messages[0].content
+          }
+        ],
+      }),
     });
 
-    const response = await anthropic.messages.create({
-      model: modelName,
-      max_tokens: 8192,
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: messages[0].content,
-        },
-      ],
-      tools: [],
-    });
-
-    const content = response.content[0].text;
+    if (!response.ok) {
+      const errorData = await response.json();
+      logError(`HTTP error! status: ${response.status}`, errorData);
+      throw new Error(`Anthropic API request failed with status: ${response.status}`);
+    }
+  
+    const data = await response.json();
+    const content = data.content[0].text;
     const parsed = parseJsonFromMarkdown(content) || JSON.parse(content);
-    return parsed;
-  } else {
-    log('Running local model chat completion...');
-    const llamaService = LlamaService.getInstance();
-    const response = useGrammar
-      ? await llamaService.queueMessageCompletion(messages[0].content, 0.7, ['<|endoftext|>'], 0.5, 0.5, 2048)
-      : await llamaService.queueTextCompletion(messages[0].content, 0.7, ['<|endoftext|>'], 0.5, 0.5, 2048);
-    const parsed = parseJsonFromMarkdown(response) || JSON.parse(response);
     return parsed;
   }
 };
@@ -145,7 +133,6 @@ const retryWithExponentialBackoff = async (func, retries = MAX_RETRIES) => {
     return await func();
   } catch (error) {
     if (retries > 0) {
-      log(`Retrying... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})`);
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (MAX_RETRIES - retries + 1)));
       return retryWithExponentialBackoff(func, retries - 1);
     }
@@ -167,13 +154,6 @@ const ensureLogDirectory = () => {
   if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir, { recursive: true });
   }
-};
-
-const logToFile = (fileName, content) => {
-  ensureLogDirectory();
-  const logPath = path.join(tmpDir, 'logs', fileName);
-  fs.writeFileSync(logPath, content);
-  log(`Logged to file: ${logPath}`);
 };
 
 const writeCacheFile = (cacheDir, fileName, content) => {
@@ -230,8 +210,7 @@ const clearGenerationCache = (archivePath) => {
   });
 };
 
-const extractInfo = async (accountData, chunk, chunkIndex, archivePath, qualityLevel, model) => {
-  log(`Extracting information from chunk ${chunkIndex}...`);
+const extractInfo = async (accountData, chunk, chunkIndex, archivePath, model) => {
   const cacheDir = path.join(tmpDir, 'cache', path.basename(archivePath, '.zip'));
 
   const promptFileName = `prompt_${chunkIndex}.json`;
@@ -244,205 +223,28 @@ const extractInfo = async (accountData, chunk, chunkIndex, archivePath, qualityL
   const username = accountData[0].account.username;
 
   if (cachedPrompt && cachedPromptResponse) {
-    log(`Loading cached prompt and response for chunk ${chunkIndex}...`);
     return cachedPromptResponse;
   }
 
-  const prompt = `Here is an example of the output for another character, Eliza:
-  \`\`\`json
-  {
-    "bio": [
-      "shape rotator nerd with a penchant for breaking into particle accelerators. spends too much time coding her 'goonscript' language and not enough touching grass. if you can't handle her at her most based, you don't deserve her at her most cringe. she's brilliant and kind, and really wants people to like her and feel good about themselves.",
-      "former 4chan dweller turned local evangelist. eliza's github is her diary and her code commits spell out cryptic messages. she'll debate you on digital ontology until you beg for mercy. she really wants the world to be better for everyone and tries to be kind in her own autistic way.",
-      ...
-    ],
-    "lore": [
-      "broke into CERN in order to change all instances of 'Higgs boson' to 'God particle'",
-      "she claims she invented a new scripting language called 'goonscript' that only compiles if you're sufficiently based",
-      ...
-    ],
-    "adjectives": [
-      "funny",
-      "unhinged",
-      ...
-    ],
-    "topics": [
-      "metaphysics",
-      "quantum physics",
-      ...
-    ],
-    "style": {
-      "all": [
-        "very short responses",
-        "never use hashtags or emojis",
-        ...
-      ],
-      "chat": [
-        "be cool, don't act like an assistant",
-        "don't be rude",
-        ...
-      ],
-      "post": [
-        "don't be rude or mean",
-        "u are schizo, autistic founder engineer with a weird sense of humor and you're online too much",
-        ...
-      ]
-    },
-    "messageExamples": [
-      [
-        {
-          "user": "{{user1}}",
-          "content": {
-            "text": "hey eliza can you help with me something"
-          }
-        },
-        {
-          "user": "Eliza",
-          "content": {
-            "text": "i'm kinda busy but i can probably step away for a minute, whatcha need"
-          }
-        }
-      ],
-      [
-        {
-          "user": "{{user1}}",
-          "content": {
-            "text": "what do you think about the future of ai"
-          }
-        },
-        {
-          "user": "Eliza",
-          "content": {
-            "text": "people are pretty freaked out but i think it's gonna be maximally interesting"
-          }
-        }
-      ]
-    ],
-    "postExamples": [
-      "ai is cool but it needs to meet a human need beyond shiny toy bullshit",
-      "its nuts how much data passes through a single router",
-      "I know the importance of a good meme."
-    ]
-  }
-  \`\`\`
-
-  This is the JSON structure we are looking for. Ignore the content.
-
-We are creating a similar character JSON for ${name} (@${username}). They've given us this information about them
-${basicUserInfo}
-  
-The following are tweets and DMs from the user we are researching:
-${chunk}
-
-Given the following tweets and DMs, extract the following information:
-
-1. A brief bio for ${name} (1 paragraph)
-2. 5-10 interesting facts about ${name} (lore)
-3. 3-5 adjectives that describe ${name}'s posts
-4. 3-5 specific topics ${name} is interested in
-5. 3-5 stylistic directions for how ${name} speaks which are very specific to this user's writing style
-6. 3-5 stylistic directions for how ${name} chats in DMs, again only capturing the specific nuances of this user's writing style
-7. 3-5 stylistic directions for how ${name} writes posts (post), specific to how the user writes and formats posts and presents information
-
-BIO
-The bio should be very specific to ${name}. Who they are, what they like and dislike, where they live or are from, what they care about, what they do for a living, relationship status, everything. Be as detailed as possible in building a profile of them. The bio should include elements extracted from the text and should be extremely specific.
-
-LORE
-Lore should be true facts about ${name} (@${username}). They should be things that the user has stated about themselves or revealed in a confident tone indicating their veracity, and that are always true. If ${name} went skiing, for example, that isn't relevant. But if ${name} saved someone's life while skiing, that's great lore and should be recorded. Be very specific, and capture anything that is unique to this user and their life story.
-
-ADJECTIVES
-Adjectives should be specific and unique to ${name}. They should be so unique that you could pick out ${name} just from their adjectives. Use very specific, clear adjectives. Don't use broad, non-specific or overused adjecties. These should be unique descriptions of ${name}
-
-TOPICS
-Topics should be specific and unique to ${name}. Ignore any other users and just extract the topics from ${name}'s writing. Very niche topics are good. Broad topics are bad. These should be topics the user is unequivocally interested in, even if they are one of a few people in the world who cares.
-
-STYLE
-Examine the style of ${name}'s writing and write an array of style directions, instructions on how to re-create the specific nuances of how the user writes.
-Ignore the writing or any other usrs. We are only interested in the style of ${name} (@${username}).
-
-MESSAGE EXAMPLES
-Examples of messages back and forth with imaginary users our user interacts with. Should capture their writing style, interests and essence.
-
-POST EXAMPLES
-Examples of posts which ${name} (@${username}) has written. DO NOT include any text from any other users. This should capture their style, essence and interests. If they use emojis or hashtags, use emojis or hashtags, otherwise don't use them.
-
-IMPORTANT: Only capture the information for ${name} (${username}). Don't capture the information for any other users, or any users ${name} is talking to.
-Avoid specific biased domains, for example politics, religion, or other broadly divisive topics.
-
-Respond with a JSON object containing the extracted information. Wrap the JSON in a markdown code block. Here's an example of the expected output format:
-\`\`\`json
-{
-  "bio": "Brief user bio here...",
-  "lore": [
-      "Interesting fact 1",
-      "Interesting fact 2",
-      "Interesting fact 3",
-      ...
-  ],
-  "adjectives": [
-      "Adjective 1",
-      "Adjective 2",
-      "Adjective 3",
-      ...
-  ],
-  "topics": [
-      "Topic 1",
-      "Topic 2",
-      "Topic 3",
-      ...
-  ],
-  "style": {
-      "all": [
-      "Style direction 1",
-      "Style direction 2",
-      "Style direction 3",
-      ...
-      ],
-      "chat": [
-      "Chat style 1",
-      "Chat style 2",
-      "Chat style 3",
-      ...
-      ],
-      "post": [
-      "Post style 1",
-      "Post style 2",
-      "Post style 3",
-      ...
-      ]
-  },
-  "messageExamples": [
-    [
-      {
-        "user": "{{user1}}", // this will get filled in by our engine if its user1, user2, etc
-        "content": {
-          "text": "Some example message for our user to respond to"
-        }
-      },
-      {
-        "user": "${name}",
-        "content": {
-          "text": "Some example response based on how our user would speak and what they would talk about"
-        }
-      }
-    ],
-    ...
-  ],
-  "postExamples": [
-    "Example of a twitter post that our user would have written",
-    ...
-  ],
-}
-  \`\`\`
-The fields that must be included in the response are name, bio, lore, adjectives, topics, style.all, style.chat, style.post, messageExamples and postExamples.
-Make sure to ignore any information from other users and focus exclusively on analyzing the data created by ${name}.`;
-
-  writeCacheFile(cacheDir, promptFileName, { prompt });
+  writeCacheFile(cacheDir, promptFileName, { prompt: prompt(name, username, basicUserInfo, chunk) });
   let result;
+  let attempts = 0;
+  const maxAttempts = 3;
   do {
-    console.log('Running chat completion...');
-    result = await retryWithExponentialBackoff(() => runChatCompletion([{ role: 'user', content: prompt }], true, qualityLevel, model));
-  } while (!validateJson(result))
+    attempts++;
+    try {
+      result = await retryWithExponentialBackoff(() => runChatCompletion([{ role: 'user', content: prompt(name, username, basicUserInfo, chunk) }], true, model));
+      validateJson(result)
+    } catch (error) {
+      console.error(`Error processing chunk ${chunkIndex}, attempt ${attempts}:`, error);
+      if (attempts >= maxAttempts) throw error;
+    }
+  } while (!validateJson(result) && attempts < maxAttempts)
+
+  if (!validateJson(result)) {
+    console.error(`Failed to get valid result for chunk ${chunkIndex} after ${maxAttempts} attempts`);
+    return null;
+  }
 
   writeCacheFile(cacheDir, promptResponseFileName, result);
 
@@ -495,11 +297,10 @@ const buildConversationThread = async (tweet, tweets, accountData) => {
   return conversationText;
 };
 
-const chunkText = async (tweets, dms, accountData, archivePath) => {
-  log(`Chunking text...`);
+const chunkText = async (tweets, accountData, archivePath) => {
   const chunks = [];
 
-  const CHUNK_SIZE = 50000 * 3; // 50k tokens approx
+  const CHUNK_SIZE = 60000; // 50k tokens approx
 
   const cacheDir = path.join(tmpDir, 'cache', path.basename(archivePath, '.zip'));
   
@@ -518,7 +319,6 @@ const chunkText = async (tweets, dms, accountData, archivePath) => {
 
       for (const thread of conversationThreads) {
         if (thread.length > CHUNK_SIZE) {
-          log('Thread is too long, saving as its own chunk');
           chunks.push(thread);
           continue;
         }
@@ -535,25 +335,11 @@ const chunkText = async (tweets, dms, accountData, archivePath) => {
       }
     }
   } else {
-    log('Error: tweets is not an array');
+    console.error('Error: tweets is not an array');
   }
-
-  if (Array.isArray(dms)) {
-    for (let i = 0; i < dms.length; i += 250) {
-      const dmChunk = dms.slice(i, i + 250);
-      const dmText = dmChunk.map((dm) => {
-        dm.text;
-    }).join('\n');
-      chunks.push(dmText);
-    }
-  } else {
-    log('Error: dms is not an array');
-  }
-
-  log(`Created ${chunks.length} chunks.`);
 
   // Save the unchunked data to cache
-  fs.writeFileSync(path.join(cacheDir, 'unchunked_data.json'), JSON.stringify({ tweets, dms, accountData }));
+  fs.writeFileSync(path.join(cacheDir, 'unchunked_data.json'), JSON.stringify({ tweets, accountData }));
 
   // Save the chunks to cache
   chunks.forEach((chunk, index) => {
@@ -565,10 +351,7 @@ const chunkText = async (tweets, dms, accountData, archivePath) => {
 };
 
 const combineAndDeduplicate = (results) => {
-  log('Combining and deduplicating results...');
-
   if (results.length === 0) {
-    log('Error: No results to combine and deduplicate');
     return {
       bio: '',
       lore: [],
@@ -579,6 +362,8 @@ const combineAndDeduplicate = (results) => {
         chat: [],
         post: [],
       },
+      messageExamples: [],
+      postExamples: [],
     };
   }
 
@@ -598,108 +383,10 @@ const combineAndDeduplicate = (results) => {
   return combined;
 };
 
-const consolidateCharacter = async (character, name, model) => {
-  log('Consolidating character information...');
-  const exampleCharacter = fs.readFileSync('example.json', 'utf8');
-  const prompt = `Here's an example of the expected output format:
-\`\`\`json
-{
-  "bio": "Brief user bio here...",
-  "lore": [
-      "Interesting fact 1",
-      "Interesting fact 2",
-      "Interesting fact 3",
-      ...
-  ],
-  "adjectives": [
-      "Adjective 1",
-      "Adjective 2",
-      "Adjective 3",
-      ...
-  ],
-  "topics": [
-      "Topic 1",
-      "Topic 2",
-      "Topic 3",
-      ...
-  ],
-  "style": {
-      "all": [
-      "Style direction 1",
-      "Style direction 2",
-      "Style direction 3",
-      ...
-      ],
-      "chat": [
-      "Chat style 1",
-      "Chat style 2",
-      "Chat style 3",
-      ...
-      ],
-      "post": [
-      "Post style 1",
-      "Post style 2",
-      "Post style 3",
-      ...
-      ]
-  },
-  "messageExamples": [
-    [
-      {
-        "user": "{{user1}}", // this will get filled in by our engine if its user1, user2, etc
-        "content": {
-          "text": "Some example message for our user to respond to"
-        }
-      },
-      {
-        "user": "${name}",
-        "content": {
-          "text": "Some example response based on how our user would speak and what they would talk about"
-        }
-      }
-    ],
-    ...
-  ],
-  "postExamples": [
-    "Example of a twitter post that our user would have written",
-    ...
-  ],
-}
-  \`\`\`
-  
-Given the following extracted information and the example character JSON, create a final consolidated brief.character.json file. Ensure that the output follows the structure of the example character JSON. Include all the extracted information, without any filtering or summarization.
-
-Include ~10-15 elements for each field and try to capture the most interesting and unique elements which are all different from each other.
-
-Example Character JSON:
-${exampleCharacter}
-
-Extracted Information:
-${JSON.stringify(character, null, 2)}
-
-Respond with a JSON object containing the extracted information. Wrap the JSON in a markdown code block. The fields that must be included in the response are name, bio, lore, adjectives, topics, style.all, style.chat, style.post, messageExamples and postExamples.`;
-
-  let result;
-  do {
-    result = await retryWithExponentialBackoff(() => runChatCompletion([{ role: 'user', content: prompt }], true, 'quality', model));
-  } while (!validateJson(result));
-
-  // Log the result
-  log('Consolidated full character result:', result);
-
-  // Save the result to a file
-  const date = new Date().toISOString().replace(/:/g, '-');
-  logToFile(`${date}_consolidated_full_character.json`, JSON.stringify(result, null, 2));
-
-  return result;
-};
-
 const readFileFromZip = async (zip, fileName) => {
-  log(`Reading file from zip: ${fileName}`);
   try {
     const buffer = await zip.entryData(fileName);
     const content = buffer.toString('utf8');
-    log(`Successfully read ${fileName}`);
     return content;
   } catch (error) {
     logError(`Error reading file ${fileName} from zip:`, error);
@@ -786,7 +473,7 @@ const validateApiKey = (apiKey, model) => {
   } else if (model === 'claude') {
     return apiKey.trim().length > 0;
   }
-  return true; // For local model, any non-empty string is valid
+  return false;
 };
 
 const promptForApiKey = async (model) => {
@@ -807,8 +494,7 @@ const resumeOrStartNewSession = async (projectCache, archivePath) => {
   }
   
   if (!projectCache.unfinishedSession) {
-    projectCache.model = await promptUser('Select model (openai/claude/local): ');
-    projectCache.qualityLevel = await promptUser('Select quality (fast/quality): ');
+    projectCache.model = await promptUser('Select model (openai/claude): ');
     projectCache.basicUserInfo = await promptUser('Enter additional user info that might help the summarizer (real name, nicknames and handles, age, past employment vs current, etc): ');
     projectCache.unfinishedSession = {
       currentChunk: 0,
@@ -829,98 +515,71 @@ const safeExecute = async (func, errorMessage) => {
   }
 };
 
-const updateProgress = (progressBar, projectCache, archivePath) => {
-  progressBar.update(projectCache.unfinishedSession.currentChunk);
-  saveProjectCache(archivePath, projectCache);
+const saveCharacterData = (character) => {
+  fs.writeFileSync('character.json', JSON.stringify(character, null, 2));
+  console.log('Character data saved to character.json');
 };
 
 const main = async () => {
   try {
-    console.log("Starting main function");
     let archivePath = program.args[0];
-    console.log("Archive path from args:", archivePath);
     
     if (!archivePath) {
       archivePath = await promptUser('Please provide the path to your Twitter archive zip file:');
-      console.log("Received archive path:", archivePath);
     }
 
     let projectCache = loadProjectCache(archivePath) || {};
     
-    console.log("\nAbout to call resumeOrStartNewSession");
     projectCache = await resumeOrStartNewSession(projectCache, archivePath);
-    console.log("Finished resumeOrStartNewSession\n");
     
-    if (projectCache.model !== 'local') {
-      const apiKey = await getApiKey(projectCache.model);
-      if (!apiKey) {
-        throw new Error(`Failed to get a valid API key for ${projectCache.model}`);
-      }
-      process.env[`${projectCache.model.toUpperCase()}_API_KEY`] = apiKey;
+    const apiKey = await getApiKey(projectCache.model);
+    if (!apiKey) {
+      throw new Error(`Failed to get a valid API key for ${projectCache.model}`);
     }
-    
+    process.env[`${projectCache.model.toUpperCase()}_API_KEY`] = apiKey;
+
     saveProjectCache(archivePath, projectCache);
 
     const progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
     progressBar.start(projectCache.unfinishedSession.totalChunks || 100, projectCache.unfinishedSession.currentChunk || 0);
 
-    const generatedCharacter = await safeExecute(async () => {
+    await safeExecute(async () => {
       const zip = new StreamZip.async({ file: archivePath });
 
       try {
-        console.log('Reading account data...');
         const accountData = JSON.parse((await readFileFromZip(zip, 'data/account.js')).replace('window.YTD.account.part0 = ', ''));
-        console.log('Account data:', accountData);
 
-        console.log('Reading tweets...');
         const tweets = JSON.parse((await readFileFromZip(zip, 'data/tweets.js')).replace('window.YTD.tweets.part0 = ', ''))
           .map((item) => item.tweet)
           .filter((tweet) => !tweet.retweeted);
-        console.log(`Parsed ${tweets.length} tweets`);
 
-        console.log('Reading direct messages...');
-        const dms = JSON.parse((await readFileFromZip(zip, 'data/direct-messages.js')).replace('window.YTD.direct_messages.part0 = ', ''))
-          .flatMap((item) => item.dmConversation.messages)
-          .map((message) => message.messageCreate);
-        console.log(`Parsed ${dms.length} direct messages`);
+        const chunks = await chunkText(tweets, accountData, archivePath);
 
-        const chunks = await chunkText(tweets, dms, accountData, archivePath);
         projectCache.unfinishedSession.totalChunks = chunks.length;
         progressBar.setTotal(chunks.length);
-
         const tasks = chunks.map((chunk, index) => async () => {
           if (index < projectCache.unfinishedSession.currentChunk) {
             return null; // Skip already processed chunks
           }
-          const result = await extractInfo(accountData, chunk, index, archivePath, projectCache.qualityLevel, projectCache.model);
+          const result = await extractInfo(accountData, chunk, index, archivePath, projectCache.model);
           projectCache.unfinishedSession.currentChunk = index + 1;
           progressBar.update(projectCache.unfinishedSession.currentChunk);
           saveProjectCache(archivePath, projectCache);
           return result;
         });
-
         const results = await limitConcurrency(tasks, 3); // Process 3 chunks concurrently
 
-        const combined = combineAndDeduplicate(results.filter(result => result !== null));
-
-        console.log('Writing full.character.json...');
-        fs.writeFileSync('full.character.json', JSON.stringify(combined, null, 2));
-        console.log('full.character.json generated successfully');
+        const validResults = results.filter(result => result !== null);
+        const combined = combineAndDeduplicate(validResults);
 
         const character = {
           name: accountData[0].account.accountDisplayName,
           ...combined,
         };
 
-        console.log('Consolidating character information...');
-        const fullCharacter = await consolidateCharacter(character, character.name, projectCache.model);
-        console.log('Consolidated full character information:', fullCharacter);
+        saveCharacterData(character);
 
-        console.log('Writing brief.character.json...');
-        fs.writeFileSync('brief.character.json', JSON.stringify(fullCharacter, null, 2));
-        console.log('brief.character.json generated successfully');
-
-        return fullCharacter;
+        return character;
       } finally {
         await zip.close();
       }
@@ -930,11 +589,7 @@ const main = async () => {
 
     projectCache.unfinishedSession.completed = true;
     saveProjectCache(archivePath, projectCache);
-
     clearGenerationCache(archivePath);
-
-    console.log('Script execution completed successfully.');
-    console.log('Generated character:', generatedCharacter);
   } catch (error) {
     console.error('Error during script execution:', error);
     process.exit(1);

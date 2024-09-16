@@ -1,11 +1,13 @@
 {
   "name": "tweets2character",
-  "version": "0.0.3",
-  "description": "Convert your twitter archive into a .character file which you can use with Ruby agent or other LLM agents.",
+  "version": "0.0.4",
+  "description": "Convert your twitter archive into a .character file which you can use with Eliza or other LLM agents.",
   "main": "tweets2character.js",
   "type": "module",
   "bin": {
-    "tweets2character": "tweets2character.js"
+    "tweets2character": "tweets2character.js",
+    "folder2knowledge": "folder2knowledge.js",
+    "knowledge2character": "knowledge2character.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -15,13 +17,18 @@
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.2",
+    "@opendocsg/pdf2md": "^0.1.31",
     "adm-zip": "^0.5.16",
     "cli-progress": "^3.12.0",
     "dotenv": "^16.4.5",
     "inquirer": "^10.2.2",
+    "node-fetch": "^3.3.2",
     "node-llama-cpp": "^3.0.0-beta.44",
     "node-stream-zip": "^1.15.0",
     "systeminformation": "^5.23.5",
     "tiktoken": "^1.0.16"
+  },
+  "peerDependencies": {
+    "node-fetch": "^3.3.2"
   }
 }
