@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+// tweets2character.js
+
 import cliProgress from 'cli-progress';
 import { program } from 'commander';
 import dotenv from 'dotenv';

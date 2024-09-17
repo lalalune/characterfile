@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 
-import fs from 'fs/promises';
-import path from 'path';
-import crypto from 'crypto';
+// folder2knowledge.js
+
+import { encoding_for_model } from 'tiktoken';
 import pdf2md from '@opendocsg/pdf2md';
-import readline from 'readline';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
+import fs from 'fs/promises';
 import os from 'os';
+import path from 'path';
+import readline from 'readline';
 
 dotenv.config();
 
@@ -76,7 +79,6 @@ const getApiKey = async () => {
   }
 };
 
-// Function to process each file
 const processDocument = async (filePath) => {
   console.log(`Processing file: ${filePath}`);
 
@@ -100,21 +102,37 @@ const processDocument = async (filePath) => {
     content: content
   };
 
-  // Function to split content by headings and ensure chunks are not too large or empty
-  const splitContent = (content, separator) => {
-    const sections = content.split(new RegExp(`(?=^${separator})`, 'gm')).filter(Boolean);
-    return sections.map(section => section.trim());
+  // Function to split content into chunks based on token count
+  const splitContent = (content) => {
+    const chunks = [];
+    const enc = encoding_for_model('text-embedding-ada-002');
+    const tokens = enc.encode(content);
+    
+    let currentChunk = [];
+
+    for (const token of tokens) {
+      currentChunk.push(token);
+      if (currentChunk.length >= 1000) {
+        chunks.push(new TextDecoder().decode(enc.decode(currentChunk)));
+        currentChunk = [];
+      }
+    }
+
+    if (currentChunk.length > 0) {
+      if (chunks.length > 0 && currentChunk.length < 500) {
+        // If the last chunk is short, combine it with the previous chunk
+        const lastChunk = new TextDecoder().decode(enc.decode(currentChunk));
+        chunks[chunks.length - 1] += lastChunk;
+      } else {
+        chunks.push(new TextDecoder().decode(enc.decode(currentChunk)));
+      }
+    }
+
+    enc.free();
+    return chunks;
   };
 
-  // Check for large sections without any headings and split them first
-  let chunks = [content.split('\n\n').join('\n')];
-
-  // Then, try to split by headings if applicable
-  ['# ', '## '].forEach((heading) => {
-    chunks = chunks.flatMap((chunk) =>
-      chunk.includes(heading) ? splitContent(chunk, heading) : chunk
-    );
-  });
+  const chunks = splitContent(content);
 
   // Process each chunk
   const processedChunks = [];
@@ -125,39 +143,44 @@ const processDocument = async (filePath) => {
 
     const chunkId = crypto.createHash('sha256').update(chunk).digest('hex');
 
-    // Vectorize the chunk with OpenAI embeddings
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        input: chunk,
-        model: 'text-embedding-3-small',
-      }),
-    });
+    try {
+      // Vectorize the chunk with OpenAI embeddings
+      const response = await fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          input: chunk,
+          model: 'text-embedding-ada-002',
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      console.error('API request failed:', data);
-      throw new Error(`API request failed with status ${response.status}`);
+      if (!response.ok) {
+        console.error('API request failed:', data);
+        throw new Error(`API request failed with status ${response.status}`);
+      }
+
+      if (!data.data || !data.data[0] || !data.data[0].embedding) {
+        console.error('Unexpected API response structure:', data);
+        throw new Error('Unexpected API response structure');
+      }
+
+      const embedding = data.data[0].embedding;
+
+      processedChunks.push({
+        id: chunkId,
+        documentId: documentId,
+        content: chunk,
+        embedding: embedding
+      });
+    } catch (error) {
+      console.error(`Error processing chunk ${index + 1}:`, error);
+      throw error;
     }
-
-    if (!data.data || !data.data[0] || !data.data[0].embedding) {
-      console.error('Unexpected API response structure:', data);
-      throw new Error('Unexpected API response structure');
-    }
-
-    const embedding = data.data[0].embedding;
-
-    processedChunks.push({
-      id: chunkId,
-      documentId: documentId,
-      content: chunk,
-      embedding: embedding
-    });
   }
 
   console.log('All chunks processed.');
