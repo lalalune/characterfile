@@ -1,6 +1,6 @@
 {
   "name": "tweets2character",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Convert your twitter archive into a .character file which you can use with Eliza or other LLM agents.",
   "main": "tweets2character.js",
   "type": "module",

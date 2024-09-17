@@ -8,3 +8,5 @@ twitter-*/
 model.gguf
 brief.character.json
 full.character.json
+*.json
+knowledge/
