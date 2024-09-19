@@ -1,6 +1,17 @@
-# characterfile
+# Characterfile
 
 The goal of this project is to create a simple, easy-to-use format for generating and transmitting character files. You can use these character files out of the box with [Eliza](https://github.com/lalalune/eliza) or other LLM agents.
+
+## Getting Started - Generate A Characterfile From Your Twitter
+
+1. Open Terminal. On Mac, you can press Command + Spacebar and search for "Terminal". If you're using Windows, use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
+2. Type `npx tweets2character` and run it. If you get an error about npx not existing, you'll need to install Node.js
+3. If you need to install node, you can do that by pasting `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash` into your terminal to install Node Version Manager (nvm)
+4. Once that runs, make a new terminal window (the old one will not have the new software linked) and run `nvm install node` followed by `nvm use node`
+5. Now copy and paste `npx tweets2character` into your terminal again.
+6. NOTE: You will need to get a [Claude](https://console.anthropic.com/settings/keys) or [OpenAI](https://platform.openai.com/api-keys) API key. Paste that in when prompted
+7. You will need to get the path of your Twitter archive. If it's in your Downloads folder on a Mac, that's ~/Downloads/<name of archive>.zip
+8. If everything is correct, you'll see a loading bar as the script processes your tweets and generates a character file. This will be output at character.json in the directory where you run `npx tweets2character`. If you run the command `cd` in the terminal before or after generating the file, you should see where you are.
 
 ## Schema
 
