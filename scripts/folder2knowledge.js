@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
-import { encoding_for_model } from 'tiktoken';
 import pdf2md from '@opendocsg/pdf2md';
-import crypto from 'crypto';
 import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import os from 'os';
@@ -90,100 +88,8 @@ const processDocument = async (filePath) => {
   } else {
     content = await fs.readFile(filePath, 'utf8');
   }
-
-  // Generate a unique ID for the document based on its content
-  const documentId = crypto.createHash('sha256').update(content).digest('hex');
-
-  const document = {
-    id: documentId,
-    path: filePath,
-    content: content
-  };
-
-  // Function to split content into chunks based on token count
-  const splitContent = (content) => {
-    const chunks = [];
-    const enc = encoding_for_model('text-embedding-ada-002');
-    const tokens = enc.encode(content);
-    
-    let currentChunk = [];
-
-    for (const token of tokens) {
-      currentChunk.push(token);
-      if (currentChunk.length >= 1000) {
-        chunks.push(new TextDecoder().decode(enc.decode(currentChunk)));
-        currentChunk = [];
-      }
-    }
-
-    if (currentChunk.length > 0) {
-      if (chunks.length > 0 && currentChunk.length < 500) {
-        // If the last chunk is short, combine it with the previous chunk
-        const lastChunk = new TextDecoder().decode(enc.decode(currentChunk));
-        chunks[chunks.length - 1] += lastChunk;
-      } else {
-        chunks.push(new TextDecoder().decode(enc.decode(currentChunk)));
-      }
-    }
-
-    enc.free();
-    return chunks;
-  };
-
-  const chunks = splitContent(content);
-
-  // Process each chunk
-  const processedChunks = [];
-
-  for (let index = 0; index < chunks.length; index++) {
-    const chunk = chunks[index];
-    console.log(`Embedding chunk ${index + 1}/${chunks.length}`);
-
-    const chunkId = crypto.createHash('sha256').update(chunk).digest('hex');
-
-    try {
-      // Vectorize the chunk with OpenAI embeddings
-      const response = await fetch('https://api.openai.com/v1/embeddings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          input: chunk,
-          model: 'text-embedding-ada-002',
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('API request failed:', data);
-        throw new Error(`API request failed with status ${response.status}`);
-      }
-
-      if (!data.data || !data.data[0] || !data.data[0].embedding) {
-        console.error('Unexpected API response structure:', data);
-        throw new Error('Unexpected API response structure');
-      }
-
-      const embedding = data.data[0].embedding;
-
-      processedChunks.push({
-        id: chunkId,
-        documentId: documentId,
-        content: chunk,
-        embedding: embedding
-      });
-    } catch (error) {
-      console.error(`Error processing chunk ${index + 1}:`, error);
-      throw error;
-    }
-  }
-
-  console.log('All chunks processed.');
-
-  return { document, chunks: processedChunks };
+  
+  return content;
 };
 
 // Asynchronous function to recursively find files and process them

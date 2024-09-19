@@ -61,7 +61,7 @@ Note that the arguments are optional and will be prompted for if not provided.
 
 ## folder2knowledge
 
-Convert a folder of images and videos into a .knowledge file which you can use with [Eliza](https://github.com/lalalune/eliza). Will convert text, markdown and PDF into chunked, searchable knowledge.
+Convert a folder of images and videos into a .knowledge file which you can use with [Eliza](https://github.com/lalalune/eliza). Will convert text, markdown and PDF into normalized text in JSON format.
 
 You can run folder2knowledge directly from your command line with no downloads:
 
