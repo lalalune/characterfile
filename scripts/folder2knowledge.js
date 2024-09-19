@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-// folder2knowledge.js
-
 import { encoding_for_model } from 'tiktoken';
 import pdf2md from '@opendocsg/pdf2md';
 import crypto from 'crypto';
