@@ -1,6 +1,6 @@
 {
   "name": "characterfile",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "A file format for character files, complete with schema, examples and validators.",
   "type": "module",
   "types": "examples/types.d.ts",
