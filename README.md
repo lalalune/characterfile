@@ -1,4 +1,4 @@
-# characterfile
+# Characterfile
 
 The goal of this project is to create a simple, easy-to-use format for generating and transmitting character files. You can use these character files out of the box with [Eliza](https://github.com/lalalune/eliza) or other LLM agents.
 
