@@ -6,6 +6,8 @@ The goal of this project is to create a simple, easy-to-use format for generatin
 
 The JSON schema for the character file is [here](schema/character.schema.json). This also matches the expected format for [OpenAI function calling](https://platform.openai.com/docs/guides/function-calling).
 
+Typescript types for the character file are [here](examples/types.d.ts).
+
 ## Examples
 
 ### Example Character file
