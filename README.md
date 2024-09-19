@@ -1,12 +1,42 @@
-# tweets2character
+# characterfile
 
-Convert your twitter archive into a .character file which you can use with [Eliza](https://github.com/lalalune/eliza) or other LLM agents.
+The goal of this project is to create a simple, easy-to-use format for generating and transmitting character files. You can use these character files out of the box with [Eliza](https://github.com/lalalune/eliza) or other LLM agents.
 
-## Important
+## Schema
 
-This project requires an OpenAI or Claude API key.
+The JSON schema for the character file is [here](schema/character.schema.json). This also matches the expected format for [OpenAI function calling](https://platform.openai.com/docs/guides/function-calling).
+
+## Examples
+
+### Example Character file
+Basic example of a character file, with values that are instructional
+[examples/example.character.json](examples/example.character.json)
+
+### Basic Python Example
+Read the example character file and print the contents
+[examples/example.py](examples/example.py)
+
+### Python Validation Example
+Read the example character file and validate it against the JSON schema
+[examples/validate.py](examples/validate.py)
+
+### Basic JavaScript Example
+Read the example character file and print the contents
+[examples/example.mjs](examples/example.mjs)
+
+### JavScript Validation Example
+Read the example character file and validate it against the JSON schema
+[examples/validate.mjs](examples/validate.mjs)
+
+# Scripts
+
+You can use the scripts the generate a character file from your tweets, convert a folder of documents into a knowledge file, and add knowledge to your character file.
+
+Most of these scripts require an OpenAI or Anthropic API key.
 
 ## tweets2character
+
+Convert your twitter archive into a .character.json
 
 First, download your Twitter archive here: https://help.x.com/en/managing-your-account/how-to-download-your-x-archive
 
@@ -22,7 +52,7 @@ Then clone this repo and run these commands:
 
 ```sh
 npm install
-node tweets2character.js twitter-2024-07-22-aed6e84e05e7976f87480bc36686bd0fdfb3c96818c2eff2cebc4820477f4da3.zip # path to your zip archive
+node scripts/tweets2character.js twitter-2024-07-22-aed6e84e05e7976f87480bc36686bd0fdfb3c96818c2eff2cebc4820477f4da3.zip # path to your zip archive
 ```
 
 Note that the arguments are optional and will be prompted for if not provided.
@@ -39,7 +69,7 @@ npx folder2knowledge <path/to/folder>
 
 ```sh
 npm install
-node folder2knowledge.js path/to/folder # path to your folder
+node scripts/folder2knowledge.js path/to/folder # path to your folder
 ```
 
 Note that the arguments are optional and will be prompted for if not provided.
@@ -56,7 +86,11 @@ npx knowledge2character <path/to/character.character> <path/to/knowledge.knowled
 
 ```sh
 npm install
-node knowledge2character.js path/to/character.character path/to/knowledge.knowledge # path to your character file and knowledge file
+node scripts/knowledge2character.js path/to/character.character path/to/knowledge.knowledge # path to your character file and knowledge file
 ```
 
 Note that the arguments are optional and will be prompted for if not provided.
+
+# License
+
+The license is the MIT license, with slight modifications so that users are not required to include the full license in their own software. See [LICENSE](LICENSE) for more details.

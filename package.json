@@ -1,20 +1,23 @@
 {
-  "name": "tweets2character",
+  "name": "characterfile",
   "version": "0.0.6",
-  "description": "Convert your twitter archive into a .character file which you can use with Eliza or other LLM agents.",
-  "main": "tweets2character.js",
+  "description": "A file format for character files, complete with schema, examples and validators.",
   "type": "module",
+  "types": "examples/types.d.ts",
   "bin": {
-    "tweets2character": "tweets2character.js",
-    "folder2knowledge": "folder2knowledge.js",
-    "knowledge2character": "knowledge2character.js"
+    "tweets2character": "scripts/tweets2character.js",
+    "folder2knowledge": "scripts/folder2knowledge.js",
+    "knowledge2character": "scripts/knowledge2character.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node tweets2character.js"
+    "tweets2character": "node scripts/tweets2character.js",
+    "folder2knowledge": "node scripts/folder2knowledge.js",
+    "knowledge2character": "node scripts/knowledge2character.js",
+    "example": "node examples/example.mjs",
+    "validate": "node examples/validate.mjs"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Shaw Walters (https://github.com/lalalune)",
+  "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.2",
     "@opendocsg/pdf2md": "^0.1.31",

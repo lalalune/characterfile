@@ -1,0 +1,134 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "The name of the character."
+      },
+      "bio": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "Short snippets of biographical information that can be composed together in a random order."
+        },
+        "minItems": 1
+      },
+      "lore": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "Short snippets of factual or historical information about the character that can be composed together in a random order."
+        },
+        "minItems": 1
+      },
+      "messageExamples": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "string",
+                "description": "The user name or placeholder (e.g., {{user1}}, {{user2}}, etc.) for the user in the conversation."
+              },
+              "content": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "The text content of the message."
+                  },
+                  "action": {
+                    "type": "string",
+                    "description": "Optional action associated with the message (e.g., 'CONTINUE')."
+                  }
+                },
+                "required": ["text"]
+              }
+            },
+            "required": ["user", "content"]
+          },
+          "minItems": 1
+        },
+        "minItems": 1
+      },
+      "postExamples": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "Examples of tweets or posts that the character would create, capturing their style, tone, and interests."
+        },
+        "minItems": 1
+      },
+      "adjectives": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "Adjectives describing the character that can be used in prompts."
+        },
+        "minItems": 1
+      },
+      "topics": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "Topics the character is interested in."
+        },
+        "minItems": 1
+      },
+      "knowledge": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "A unique identifier for the knowledge item."
+            },
+            "path": {
+              "type": "string",
+              "description": "The path to the knowledge item file."
+            },
+            "content": {
+              "type": "string",
+              "description": "The full extracted text content of the knowledge item."
+            }
+          },
+          "required": ["id", "path", "content"]
+        }
+      },
+      "style": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "General style directions for how the character should speak or write."
+            },
+            "minItems": 1
+          },
+          "chat": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Style directions specifically for chat contexts, like Discord."
+            },
+            "minItems": 1
+          },
+          "post": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Style directions specifically for post contexts, like Twitter."
+            },
+            "minItems": 1
+          }
+        },
+        "required": ["all", "chat", "post"]
+      }
+    },
+    "required": ["name", "bio", "lore", "messageExamples", "postExamples", "adjectives", "topics", "style"]
+  }
